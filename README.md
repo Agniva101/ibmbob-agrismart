@@ -387,12 +387,6 @@ curl -X POST http://localhost:5000/api/predict \
 - The system does not account for market prices, crop rotation, or irrigation availability.
 - The REST API always uses the best model — the sidebar selector does not affect API responses.
 
-> **Disclaimer:** This system is an educational machine-learning project.
+> **Disclaimer:** This system is a machine-learning project.
 > Crop recommendations should be validated with local agricultural expertise
 > and field conditions before making planting decisions.
-
----
-
-## License
-
-MIT — for educational and non-commercial use.
