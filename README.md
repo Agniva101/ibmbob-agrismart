@@ -43,12 +43,12 @@ data-driven, ML-powered recommendations to support informed planting decisions.
 | ML Workflow | End-to-end: load → clean → train → evaluate → predict |
 | 5 ML Models | LR, Decision Tree, Random Forest, KNN, SVM |
 | Model Selector | Sidebar dropdown to switch the active model at any time |
-| Auto Best Model | Default selection is the highest weighted F1 on the test set |
+| Auto Best Model | Default selection is the highest mean 5-fold CV weighted F1 on the training set |
 | Streamlit Dashboard | Interactive 6-page professional UI |
 | Flask REST API | 4 endpoints — start with `python app.py --api` on port 5000 |
 | EDA | 10+ interactive Plotly charts |
 | Dataset Explorer | Filterable viewer with CSV download |
-| Prediction UI | Live crop prediction with confidence bar chart |
+| Prediction UI | Live crop prediction with predicted probability bar chart |
 | Feature Importance | Shows importances for the active model (falls back to RF for models without it) |
 | Reproducibility | `random_state=42` throughout |
 | Caching | `st.cache_data` / `st.cache_resource` — no redundant retraining |
@@ -89,9 +89,15 @@ data-driven, ML-powered recommendations to support informed planting decisions.
 |-------|-------|
 | Logistic Regression | `max_iter=1000`, `random_state=42` |
 | Decision Tree | `random_state=42` |
-| Random Forest | 100 estimators, `random_state=42` |
+| Random Forest | Tuned via GridSearchCV (training set only), `random_state=42` |
 | K-Nearest Neighbors | `k=5` |
 | Support Vector Machine | RBF kernel, `probability=True`, `random_state=42` |
+
+### Feature Scaling & Data Leakage Prevention
+
+Models requiring feature scaling (Logistic Regression, K-Nearest Neighbors, Support Vector Machine) use `StandardScaler` inside an sklearn `Pipeline`. This prevents data leakage during cross-validation because the scaler is fitted independently inside each CV fold. Tree-based models (Decision Tree, Random Forest) are used without scaling.
+
+The final model is persisted as a single artifact (`best_model.joblib`), which includes the preprocessing pipeline where applicable.
 
 ### Evaluation Metrics
 
@@ -122,6 +128,8 @@ AgriSmart/
 ├── app.py                   # ← entire application (frontend + backend)
 ├── Crop_recommendation.csv  # ← dataset (download from Kaggle)
 ├── requirements.txt
+├── best_model.joblib        # ← saved model (includes scaling pipeline if applicable)
+├── label_encoder.joblib     # ← saved label encoder
 ├── README.md
 └── AgriSmart_Project_Documentation.docx
 ```
@@ -243,18 +251,42 @@ Returns deployed model information and metrics for all models.
 ```json
 {
   "selected_model": "Random Forest",
-  "available_models": ["Random Forest", "..."],
-  "evaluation_metrics": [
-    {
-      "Model": "Random Forest",
-      "Train Accuracy": 1.0,
-      "Test Accuracy": 0.9932,
-      "Precision": 0.9933,
-      "Recall": 0.9932,
-      "F1 Score": 0.9932
-    }
+  "selection_criterion": "5-fold stratified cross-validation F1 (weighted)",
+  "available_models": [
+    "Random Forest",
+    "..."
   ],
-  "feature_names": ["N", "P", "K", "temperature", "humidity", "ph", "rainfall"],
+  "cross_validation": {
+    "folds": 5,
+    "scoring": "f1_weighted",
+    "scores_by_model": {
+      "Random Forest": 0.9945
+    },
+    "strategy": "StratifiedKFold"
+  },
+  "test_evaluation": {
+    "Random Forest": {
+      "test_accuracy": 0.9932,
+      "test_f1": 0.9932
+    }
+  },
+  "rf_best_params": {
+    "max_depth": null,
+    "max_features": "sqrt",
+    "min_samples_leaf": 1,
+    "min_samples_split": 2,
+    "n_estimators": 100
+  },
+  "rf_best_cv_f1": 0.9945,
+  "feature_names": [
+    "N",
+    "P",
+    "K",
+    "temperature",
+    "humidity",
+    "ph",
+    "rainfall"
+  ],
   "target_name": "label"
 }
 ```
@@ -351,7 +383,7 @@ curl -X POST http://localhost:5000/api/predict \
 
 - Model performance reflects the training dataset's geographic and temporal scope.
 - Soil and climate conditions vary significantly by region and season.
-- Confidence scores are probabilistic estimates, not agronomic guarantees.
+- Predicted probabilities are statistical estimates, not agronomic guarantees.
 - The system does not account for market prices, crop rotation, or irrigation availability.
 - The REST API always uses the best model — the sidebar selector does not affect API responses.
 
